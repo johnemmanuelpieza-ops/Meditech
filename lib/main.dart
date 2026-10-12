@@ -25,9 +25,10 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         fontFamily: 'Inter',
         scaffoldBackgroundColor: Colors.white,
-        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: AppColors.primary,
+        ),
       ),
-      
       home: const LandingScreen(),
     );
   }
@@ -41,43 +42,71 @@ class LandingScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            children: [
-              const SizedBox(height: 56),
-              const _BrandHeader(),
-              const SizedBox(height: 48),
-              const _HeroTitle(),
-              const SizedBox(height: 44),
-              const Text(
-                'Search, compare, and manage your prescriptions\nwith confidence.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.25,
-                  fontWeight: FontWeight.w400,
-                  color: AppColors.subtitle,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final isSmall = constraints.maxWidth < 360;
+            final horizontalPadding =
+                constraints.maxWidth < 400 ? 20.0 : 32.0;
+
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: horizontalPadding,
+                  ),
+                  child: IntrinsicHeight(
+                    child: Column(
+                      children: [
+                        SizedBox(height: isSmall ? 28 : 56),
+                        const _BrandHeader(),
+                        SizedBox(height: isSmall ? 36 : 48),
+                        const _HeroTitle(),
+                        SizedBox(height: isSmall ? 28 : 44),
+                        const Text(
+                          'Search, compare, and manage your prescriptions\nwith confidence.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.25,
+                            fontWeight: FontWeight.w400,
+                            color: AppColors.subtitle,
+                          ),
+                        ),
+                        const Spacer(),
+                        const SizedBox(height: 40),
+                        _PrimaryButton(
+                          label: 'Get started',
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const SignUpScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                        _SignInPrompt(
+                          onSignIn: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const LoginScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 28),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-              const Spacer(),
-              _PrimaryButton(
-                label: 'Get started',
-                onPressed: () => Navigator.push(
-                context,
-              MaterialPageRoute(builder: (_) => const SignUpScreen()),
-              ),
-            ),
-              const SizedBox(height: 16),
-              _SignInPrompt(
-                onSignIn: () => Navigator.push(
-                context,
-              MaterialPageRoute(builder: (_) => const LoginScreen()),
-              ),
-            ),
-              const SizedBox(height: 40),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -91,6 +120,7 @@ class _BrandHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
@@ -101,14 +131,19 @@ class _BrandHeader extends StatelessWidget {
             fit: BoxFit.cover,
           ),
         ),
-        const SizedBox(width: 14),
-        const Text(
-          'MediTech',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: AppColors.dark,
-            letterSpacing: -0.3,
+        const SizedBox(width: 10),
+        const Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              'MediTech',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+                color: AppColors.dark,
+                letterSpacing: -0.3,
+              ),
+            ),
           ),
         ),
       ],
@@ -121,7 +156,6 @@ class _HeroTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FittedBox guarantees the three lines never overflow on narrow screens.
     return const FittedBox(
       fit: BoxFit.scaleDown,
       child: Text(
@@ -140,7 +174,10 @@ class _HeroTitle extends StatelessWidget {
 }
 
 class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({required this.label, required this.onPressed});
+  const _PrimaryButton({
+    required this.label,
+    required this.onPressed,
+  });
 
   final String label;
   final VoidCallback onPressed;
@@ -196,17 +233,22 @@ class _PrimaryButton extends StatelessWidget {
 }
 
 class _SignInPrompt extends StatelessWidget {
-  const _SignInPrompt({required this.onSignIn});
+  const _SignInPrompt({
+    required this.onSignIn,
+  });
 
   final VoidCallback onSignIn;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 4,
       children: [
         const Text(
-          'Already have an account? ',
+          'Already have an account?',
+          textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w400,

@@ -1,6 +1,13 @@
-import 'package:flutter/material.dart';
 
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
+import 'dashboard.dart';
 import 'sign_up.dart';
+
+const String loginApiBaseUrl = 'http://localhost:3000';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
   bool _remember = false;
   bool _submitted = false;
+  bool _isLoading = false;
 
   String? get _emailError {
     if (!_submitted) return null;
@@ -36,8 +44,12 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     for (final c in [_emailController, _passwordController]) {
-      c.addListener(() => setState(() {}));
+      c.addListener(_handleFieldChange);
     }
+  }
+
+  void _handleFieldChange() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -47,11 +59,148 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  void _showError(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: _C.error,
+        ),
+      );
+  }
+
+  Future<void> _submit() async {
     FocusScope.of(context).unfocus();
+
     setState(() => _submitted = true);
-    if (_emailError != null || _passwordError != null) return;
-    _showToast(context, 'Signed in');
+
+    if (_emailError != null || _passwordError != null || _isLoading) {
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$loginApiBaseUrl/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'email': _emailController.text.trim(),
+              'password': _passwordController.text,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      dynamic decoded;
+
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        decoded = <String, dynamic>{};
+      }
+
+      final data = decoded is Map<String, dynamic>
+          ? decoded
+          : <String, dynamic>{};
+
+      if (!mounted) return;
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        _showError(
+          data['message']?.toString() ??
+              data['error']?.toString() ??
+              'Sign in failed. Please check your email and password.',
+        );
+        return;
+      }
+
+      final token = data['access_token']?.toString() ?? '';
+      final user = data['user'];
+
+      String fullName = '';
+
+      if (user is Map<String, dynamic>) {
+        fullName = (user['full_name'] ??
+                user['fullName'] ??
+                user['name'] ??
+                '')
+            .toString()
+            .trim();
+      }
+
+      if (fullName.isEmpty && token.isNotEmpty) {
+        try {
+          final profileResponse = await http
+              .get(
+                Uri.parse('$loginApiBaseUrl/profile'),
+                headers: {
+                  'Authorization': 'Bearer $token',
+                  'Content-Type': 'application/json',
+                },
+              )
+              .timeout(const Duration(seconds: 15));
+
+          if (profileResponse.statusCode == 200) {
+            final profileDecoded = jsonDecode(profileResponse.body);
+
+            if (profileDecoded is Map<String, dynamic>) {
+              final profile = profileDecoded['profile'];
+
+              if (profile is Map<String, dynamic>) {
+                fullName = (profile['full_name'] ??
+                        profile['fullName'] ??
+                        profile['name'] ??
+                        '')
+                    .toString()
+                    .trim();
+              } else {
+                fullName = (profileDecoded['full_name'] ??
+                        profileDecoded['fullName'] ??
+                        profileDecoded['name'] ??
+                        '')
+                    .toString()
+                    .trim();
+              }
+            }
+          }
+        } catch (_) {
+          // Continue to the dashboard if profile lookup fails.
+        }
+      }
+
+      if (fullName.isEmpty) {
+        fullName = _emailController.text.trim().split('@').first;
+      }
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => DashboardScreen(userName: fullName),
+        ),
+      );
+    } on http.ClientException {
+      _showError(
+        'Could not connect to the server. Check your backend connection.',
+      );
+    } catch (_) {
+      _showError(
+        'Unable to sign in. Please check your connection and try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  void _forgotPassword() {
+    _showError('Password recovery is not connected yet.');
   }
 
   @override
@@ -93,7 +242,7 @@ class _LoginScreenState extends State<LoginScreen> {
               onChanged: (v) => setState(() => _remember = v),
             ),
             GestureDetector(
-              onTap: () {},
+              onTap: _forgotPassword,
               behavior: HitTestBehavior.opaque,
               child: const Text(
                 'Forgot password?',
@@ -108,18 +257,24 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         const SizedBox(height: 28),
         _SubmitButton(
-          label: 'Sign in',
-          enabled: _remember,
+          label: _isLoading ? 'Signing in...' : 'Sign in',
+          enabled: !_isLoading,
           onPressed: _submit,
         ),
         const SizedBox(height: 14),
         _SwitchPrompt(
           question: 'New to MediTech?',
           action: 'Create an account',
-          onTap: () => Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const SignUpScreen()),
-          ),
+          onTap: () {
+            if (_isLoading) return;
+
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const SignUpScreen(),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -139,6 +294,7 @@ class _C {
   static const Color error = Color(0xFFC0392B);
 }
 
+// ignore: unused_element
 void _showToast(BuildContext context, String message) {
   ScaffoldMessenger.of(context)
     ..clearSnackBars()
@@ -309,11 +465,16 @@ class _LabeledFieldState extends State<_LabeledField> {
   @override
   void initState() {
     super.initState();
-    _focus.addListener(() => setState(() {}));
+    _focus.addListener(_handleFocusChange);
+  }
+
+  void _handleFocusChange() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _focus.removeListener(_handleFocusChange);
     _focus.dispose();
     super.dispose();
   }
@@ -322,6 +483,7 @@ class _LabeledFieldState extends State<_LabeledField> {
   Widget build(BuildContext context) {
     final focused = _focus.hasFocus;
     final hasError = widget.errorText != null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -349,7 +511,9 @@ class _LabeledFieldState extends State<_LabeledField> {
             ),
             boxShadow: [
               BoxShadow(
-                color: _C.primary.withValues(alpha: focused ? 0.14 : 0.10),
+                color: _C.primary.withValues(
+                  alpha: focused ? 0.14 : 0.10,
+                ),
                 blurRadius: 16,
                 offset: const Offset(0, 5),
               ),
@@ -364,11 +528,22 @@ class _LabeledFieldState extends State<_LabeledField> {
                   obscureText: widget.obscureText,
                   keyboardType: widget.keyboardType,
                   textInputAction: widget.textInputAction,
+                  onSubmitted: (_) {
+                    if (widget.textInputAction == TextInputAction.done) {
+                      FocusScope.of(context).unfocus();
+                    }
+                  },
                   cursorColor: _C.primary,
-                  style: const TextStyle(fontSize: 14, color: _C.dark),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: _C.dark,
+                  ),
                   decoration: InputDecoration(
                     hintText: widget.hint,
-                    hintStyle: const TextStyle(fontSize: 14, color: _C.hint),
+                    hintStyle: const TextStyle(
+                      fontSize: 14,
+                      color: _C.hint,
+                    ),
                     border: InputBorder.none,
                     isCollapsed: true,
                   ),
@@ -396,7 +571,10 @@ class _LabeledFieldState extends State<_LabeledField> {
 }
 
 class _ShowToggle extends StatelessWidget {
-  const _ShowToggle({required this.obscured, required this.onTap});
+  const _ShowToggle({
+    required this.obscured,
+    required this.onTap,
+  });
 
   final bool obscured;
   final VoidCallback onTap;
@@ -454,7 +632,13 @@ class _CheckRow extends StatelessWidget {
                 : null,
           ),
           const SizedBox(width: 10),
-          Text(label, style: const TextStyle(fontSize: 10, color: _C.terms)),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              color: _C.terms,
+            ),
+          ),
         ],
       ),
     );
@@ -531,7 +715,10 @@ class _SwitchPrompt extends StatelessWidget {
         children: [
           Text(
             '$question  ',
-            style: const TextStyle(fontSize: 12, color: _C.subtitle),
+            style: const TextStyle(
+              fontSize: 12,
+              color: _C.subtitle,
+            ),
           ),
           GestureDetector(
             onTap: onTap,
@@ -570,9 +757,12 @@ class _AuthPage extends StatelessWidget {
         child: LayoutBuilder(
           builder: (context, constraints) {
             return SingleChildScrollView(
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              keyboardDismissBehavior:
+                  ScrollViewKeyboardDismissBehavior.onDrag,
               child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                constraints: BoxConstraints(
+                  minHeight: constraints.maxHeight,
+                ),
                 child: IntrinsicHeight(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -580,7 +770,9 @@ class _AuthPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 20),
-                        _BackButton(onTap: () => Navigator.maybePop(context)),
+                        _BackButton(
+                          onTap: () => Navigator.maybePop(context),
+                        ),
                         const SizedBox(height: 46),
                         const Center(child: _Brand()),
                         const SizedBox(height: 28),
@@ -606,7 +798,10 @@ class _AuthPage extends StatelessWidget {
                             child: Text(
                               'Your health information stays private and protected.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 10, color: _C.footer),
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: _C.footer,
+                              ),
                             ),
                           ),
                         ),
